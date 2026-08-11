@@ -1,0 +1,14 @@
+# du lieu Kaggle (tai rieng tu trang cuoc thi, ~2.5GB)
+*.csv
+*.zip
+
+# cache tu sinh khi chay santander_data.py (~1.9GB)
+cache/
+
+# hinh tu sinh khi chay run_optim.py
+figures/
+
+# python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
