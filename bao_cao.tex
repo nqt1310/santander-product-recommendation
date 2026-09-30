@@ -1,0 +1,337 @@
+% =====================================================================
+%  Overleaf: Menu -> Compiler.  File nay chay duoc voi CA XeLaTeX LAN pdfLaTeX
+%  (khoi iftex ben duoi tu chon goi font phu hop). Neu van loi font tieng Viet
+%  thi chon XeLaTeX cho chac.
+%
+%  Thu muc:   bao_cao.tex
+%             hinh/*.pdf     <- copy cac file PDF notebook sinh ra vao day
+%
+%  Thieu hinh nao thi macro \hinh ve mot o trong thay cho no -> van compile duoc.
+% =====================================================================
+\documentclass[aspectratio=169, 11pt]{beamer}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T5]{fontenc}      % T5 = bang ma tieng Viet (goi vntex, co san tren Overleaf)
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+  \setsansfont{Latin Modern Sans}   % font nay LUON co trong TeX Live
+\fi
+
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\usetheme{default}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+% mau giu nguyen nhu ban slide cu: structure = xanh navy tram
+\setbeamercolor{structure}{fg=blue!55!black}
+\colorlet{primary}{blue!55!black}     % \textcolor{primary} van dung duoc, cung mot mau
+\setbeamerfont{frametitle}{size=\large, series=\bfseries}
+
+% Tim hinh o CA HAI cho: hinh/ten.pdf va ten.pdf ngay canh file .tex.
+% Tren Overleaf rat hay xay ra viec upload file phang ra goc thay vi vao thu muc,
+% luc do \IfFileExists{hinh/...} se fail va chi ve ra o trong.
+\graphicspath{{hinh/}{./}}
+\newcommand{\vehinh}[2]{%
+  \IfFileExists{hinh/#2}%
+    {\includegraphics[width=\linewidth, height=#1\textheight, keepaspectratio]{hinh/#2}}%
+    {\IfFileExists{#2}%
+      {\includegraphics[width=\linewidth, height=#1\textheight, keepaspectratio]{#2}}%
+      {\fbox{\parbox[c][#1\textheight][c]{0.93\linewidth}{\centering\footnotesize\ttfamily
+        #2\\[2pt]\rmfamily\textcolor{red}{không tìm thấy \texttt{hinh/#2} lẫn \texttt{./#2}}}}}}}
+% \hinh  -> cao toi da 0.34 khung (khi xep CHONG hai hinh trong mot cot)
+% \hinhto -> cao toi da 0.60 khung (khi moi cot chi co MOT hinh)
+\newcommand{\hinh}[1]{\vehinh{0.34}{#1}}
+\newcommand{\hinhto}[1]{\vehinh{0.60}{#1}}
+
+\title{Tối ưu hoá hàm log-loss bằng các thuật toán gradient}
+\subtitle{Santander Product Recommendation}
+\author{Nhóm \ldots}
+\date{\today}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% =====================================================================
+\begin{frame}{Giới thiệu Dataset \& Bài toán}
+
+\textbf{Bài toán:} dự đoán bán chéo (cross-sell) sản phẩm tài chính $\Rightarrow$ phân loại nhị
+phân bằng Logistic Regression, tối thiểu hoá log-loss \textbf{có regularization}:
+\[
+  F(\mathbf{w})=\underbrace{\frac1n\sum_{i=1}^{n}\Big[\log\big(1+e^{z_i}\big)-y_i z_i\Big]}_{\ell(\mathbf{w})\ \text{(log-loss)}}
+  \;+\;\lambda R(\mathbf{w}),\qquad \mathbf{z}=X\mathbf{w}
+\]
+\[
+  R(\mathbf{w})=\tfrac12\|\mathbf{w}\|_2^2\ \text{(Ridge/L2)}
+  \qquad\qquad
+  R(\mathbf{w})=\|\mathbf{w}\|_1\ \text{(Lasso/L1)}
+\]
+\textbf{Dataset:} Santander Product Recommendation (Kaggle) — $\sim 7{,}19$ triệu bản ghi khách hàng theo tháng.
+Trong đó có 1.842.484 quan sát được dùng để huấn luyện.
+\begin{center}
+\small
+\begin{tabular}{@{}lcl@{}}
+\toprule
+\textbf{Nhóm đặc trưng} & \textbf{Số} & \textbf{Mô tả} \\
+\midrule
+LAG & 24 & Sở hữu sản phẩm tháng trước (\texttt{ind\_*\_ult1\_lag}) \\
+Standardized & 6  & \texttt{age}, \texttt{antiguedad}, \texttt{renta}, \texttt{ind\_nuevo}, \dots \\
+Categorical & 7  & Giới tính, phân khúc, kênh, quan hệ (dummies) \\
+\midrule
+\textbf{Tổng} & \textbf{37} & Đầu vào mô hình \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{-0.2em}
+{\footnotesize \textit{Target:} sở hữu sản phẩm ở tháng hiện tại (\texttt{ind\_*\_ult1}), suy ra từ nhóm SP (24 sản phẩm).}
+
+\end{frame}
+
+% =====================================================================
+\begin{frame}[t]{Bộ tham số dùng để chạy}
+\footnotesize
+Bộ 1 là bộ đã chạy để lấy các hình phía sau. Bộ 2 là bộ mở rộng, dùng để kiểm chứng lại
+kết luận: lưới rộng hơn nên chạm được cả hai đầu hỏng, và tăng $\lambda$ để thấy rõ tác dụng
+của hiệu chỉnh.
+
+\smallskip
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Thuật toán} & \textbf{Tham số quét} & \textbf{Bộ 1 (đã chạy)} & \textbf{Bộ 2 (mở rộng)} \\
+\midrule
+GD bước cố định & $\alpha$ (bội của $1/L$) & $0.1;\,0.5;\,1;\,1.5;\,2$ & $0.5;\,1;\,2;\,5;\,20$ \\
+GD backtracking & $\beta$ (hệ số co)       & $0.1;\,0.3;\,0.5;\,0.7;\,0.9$ & $0.2;\,0.5;\,0.8$ \\
+                & $c$ (Armijo)             & $10^{-4}$ & $10^{-4};\,10^{-2}$ \\
+SGD             & $\alpha_0$               & $0.01;\,0.05;\,0.2;\,1;\,5$ & $0.2;\,1;\,5;\,20;\,50$ \\
+                & $B$ (batch)              & $4096$ & $256;\,4096$ \\
+                & lịch teo bước            & cố định, $\alpha_0/\sqrt{k}$, $\alpha_0/k$ & như bộ 1 \\
+Subgradient     & $\alpha_0$               & $0.5;\,2;\,8;\,30;\,100$ & $1;\,4;\,16;\,64$ \\
+\midrule
+\multicolumn{2}{@{}l}{Số vòng lặp / số epoch} & $250$ / $42$ & $100$ / $100$ \\
+\multicolumn{2}{@{}l}{$\lambda$ (Ridge) / $\lambda_1$ (Lasso)} & $10^{-3}$ / $10^{-3}$ & $10^{-2}$ / $10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip
+Nguyên tắc chọn lưới: phải \textbf{kẹp được nghiệm tối ưu ở giữa}. Nếu giá trị tốt nhất rơi
+vào đúng hai đầu lưới thì chưa kết luận được, phải nới lưới ra rồi chạy lại. Bộ 1 có
+$\alpha=2/L$ ở đầu trên và $\alpha_0=100$ ở subgradient chính là để chạm vào vùng hỏng.
+\end{frame}
+\begin{frame}[t]{GD với bước cố định: chọn $\alpha$ thế nào}
+\begin{columns}[T]
+\begin{column}{0.46\textwidth}\footnotesize
+\[ \mathbf{w}_{k+1}=\mathbf{w}_k-\alpha\nabla F(\mathbf{w}_k) \]
+Bước an toàn theo lý thuyết:
+\[ \alpha=\frac1L,\qquad L=\frac{\sigma_{\max}(X)^2}{4n}+\lambda \]
+(vì $\sigma'(z)\le\tfrac14$). Thử $\alpha\in\{0.1;0.5;1;1.5;2\}\times\tfrac1L$.
+
+\smallskip
+\textbf{Kinh nghiệm:}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item $\alpha=1/L$ chắc chắn hội tụ nhưng quá dè dặt. $L$ suy ra từ chặn
+        $\sigma'(z)\le 1/4$ cho mọi điểm, trong khi tỉ lệ dương chỉ khoảng 1\% nên độ cong
+        thực tế nhỏ hơn nhiều.
+  \item Tăng $\alpha$ thì hội tụ nhanh hơn, nhưng chỉ đến ngưỡng $2/L$. Vượt qua đó thì
+        $F$ dao động rồi phân kỳ.
+  \item Phải dò bằng tay, và muốn có $1/L$ thì phải tính được $L$ trước.
+\end{itemize}
+\end{column}
+
+\begin{column}{0.52\textwidth}
+\hinh{gd_codinh_vonglap.pdf}\\[0.4em]
+\hinh{gd_codinh_thoigian.pdf}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}[t]{GD với backtracking (Armijo)}
+\begin{columns}[T]
+\begin{column}{0.46\textwidth}\footnotesize
+Mỗi vòng thử bước \textbf{gấp đôi} lần trước, chưa thoả thì nhân với $\beta$:
+\[ F(\mathbf{w}-\alpha\nabla F)\le F(\mathbf{w})-c\,\alpha\,\|\nabla F\|^2 \]
+với $c=10^{-4}$. Thử $\beta\in\{0.1;0.3;0.5;0.7;0.9\}$.
+
+\smallskip
+\textcolor{red}{\textbf{Chỗ dễ sai:}} mỗi vòng phải cho bước lớn dần lên. Nếu chỉ biết
+co xuống từ $1/L$ thì backtracking không làm gì cả, vì $1/L$ vốn đã thoả điều kiện sẵn.
+
+\smallskip
+\textbf{Kinh nghiệm:}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item Xét theo số vòng lặp, năm giá trị $\beta$ cho đường gần như trùng nhau.
+  \item Xét theo thời gian thì tách hẳn ra. $\beta$ lớn dò kỹ hơn nên mỗi vòng phải tính
+        $F$ nhiều lần, thành ra chậm hơn.
+  \item Một cấu hình có thể thắng ở hình này và thua ở hình kia, nên phải vẽ cả hai.
+\end{itemize}
+\end{column}
+
+\begin{column}{0.52\textwidth}
+\hinh{gd_bt_vonglap.pdf}\\[0.4em]
+\hinh{gd_bt_thoigian.pdf}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}[t]{SGD: mini-batch và lịch teo bước}
+\begin{columns}[T]
+\begin{column}{0.46\textwidth}\footnotesize
+\[ \nabla\ell(\mathbf{w})\approx\frac1B\sum_{i\in\mathcal{B}}\nabla\ell_i(\mathbf{w}) \]
+Ước lượng \textbf{không chệch}, phương sai $\sigma^2/B$, rẻ hơn $n/B$ lần mỗi bước.
+Điều kiện Robbins--Monro:
+\[ \sum_k\alpha_k=\infty,\qquad \sum_k\alpha_k^2<\infty \]
+
+\smallskip
+\textbf{Kinh nghiệm:}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item Không dùng được backtracking cho SGD. Điều kiện Armijo cần so $F$ trước và sau,
+        mà $F$ trên mini-batch là số nhiễu nên nó chấp nhận hay từ chối đều không đáng tin.
+  \item Ở đây $d=38$ nên $B=1$ còn chậm hơn GD tính theo giây: một bước GD là một lệnh
+        BLAS trên ma trận lớn, còn SGD là hàng nghìn lệnh rất nhỏ. Đo được một epoch tốn
+        gấp 4 đến 8 lần một vòng GD, nên chọn $B=4096$.
+  \item Teo bước chỉ có lợi khi chạy đủ lâu. Với 42 epoch, $\alpha_0/k$ teo quá nhanh nên
+        chưa kịp xuống tới đáy.
+\end{itemize}
+\end{column}
+
+\begin{column}{0.52\textwidth}
+\hinh{sgd_eta_epoch.pdf}\\[0.4em]
+\hinh{sgd_lich_thoigian.pdf}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}[t]{Subgradient cho Lasso: kết quả}
+\begin{columns}[T]
+\begin{column}{0.46\textwidth}\footnotesize
+Quét $\alpha_0\in\{0.5;\,2;\,8;\,30;\,100\}$, lịch teo $\alpha_0/\sqrt{k}$, $\lambda_1=10^{-3}$,
+250 vòng.
+
+\smallskip
+\begin{center}\scriptsize
+\begin{tabular}{@{}rrc@{}}
+\toprule
+$\alpha_0$ & $F$ cuối & Hệ số $\neq0$ \\
+\midrule
+$0.5$ & 0.1\ldots & \ldots/37 \\
+$2$   & 0.1\ldots & \ldots/37 \\
+$8$   & \textbf{0.1\ldots} & \ldots/37 \\
+$30$  & 0.1\ldots & \ldots/37 \\
+$100$ & 0.1\ldots & \ldots/37 \\
+\midrule
+sklearn L1 & 0.1\ldots & \ldots/37 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip
+\textbf{Đọc được gì từ kết quả:}
+\begin{itemize}\setlength\itemsep{0.2em}
+  \item Đáy nằm ở $\alpha_0=8$, hai đầu lưới đều tệ hơn. Giá trị chọn được nằm giữa lưới
+        chứ không phải ở biên, nên kết luận này dùng được.
+  \item Độ thưa \textbf{không phụ thuộc $\alpha_0$}: cả năm lần chạy cho cùng số hệ số khác 0.
+        Toạ độ $j$ chỉ đứng yên tại 0 khi $|\nabla_j\ell|\le\lambda_1$, mà điều kiện đó
+        chỉ phụ thuộc dữ liệu và $\lambda_1$.
+  \item $\alpha_0=100$ làm $F$ vọt lên trên rồi mới bò xuống suốt 200 vòng. Đây là bằng chứng
+        trực tiếp cho việc subgradient không bảo đảm giảm ở mỗi bước.
+  \item So với \texttt{liblinear}: $F$ chênh nhau ở chữ số thứ 6, nhưng code tự viết chậm
+        hơn vài lần.
+\end{itemize}
+\end{column}
+
+\begin{column}{0.52\textwidth}
+\hinh{subgrad_vonglap.pdf}\\[0.4em]
+\hinh{subgrad_thoigian.pdf}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{So sánh: ba setup tốt nhất với sklearn}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}\hinhto{tongket_vonglap.pdf}\end{column}
+\begin{column}{0.5\textwidth}\hinhto{tongket_thoigian.pdf}\end{column}
+\end{columns}
+
+\vspace{0.4em}
+\begin{center}\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Setup tốt nhất (Ridge)} & \textbf{$F$ cuối} & \textbf{Giây} \\
+\midrule
+GD bước cố định $\alpha=\ldots$                     & 0.0\ldots & \ldots \\
+GD backtracking $\beta=\ldots$                 & 0.0\ldots & \ldots \\
+SGD $\alpha_0=\ldots$, $B=4096$                  & 0.0\ldots & \ldots \\
+\midrule
+sklearn \texttt{LogisticRegression} (mặc định) & 0.0\ldots & \ldots \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{-0.1em}
+{\footnotesize Điều kiện để so được: cả ba cùng tối thiểu hoá \emph{một} hàm $F$ (Ridge, cùng
+$\lambda$). Quy đổi cho sklearn: nó dùng $\frac12\|\mathbf{w}\|^2+C\sum_i\ell_i$ (tổng), ta dùng
+trung bình $\Rightarrow C=\dfrac{1}{n\lambda}$.}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Lasso: subgradient so với thư viện}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}\hinhto{lasso_vonglap.pdf}\end{column}
+\begin{column}{0.5\textwidth}\hinhto{lasso_thoigian.pdf}\end{column}
+\end{columns}
+
+\vspace{0.4em}
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Lasso} & \textbf{$F$ cuối} & \textbf{Giây} & \textbf{Hệ số $\neq0$} \\
+\midrule
+Subgradient $\alpha_0=\ldots$                        & 0.1\ldots & \ldots & \ldots/37 \\
+sklearn \texttt{liblinear} (\texttt{penalty='l1'}) & 0.1\ldots & \ldots & \ldots/37 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{-0.1em}
+{\footnotesize Để riêng vì subgradient tối thiểu hoá \emph{hàm khác}
+($\lambda_1\|\mathbf{w}\|_1$ thay cho $\frac\lambda2\|\mathbf{w}\|_2^2$), nên đặt chung
+một trục với Ridge là so sai.}
+\end{frame}
+
+% =====================================================================
+\begin{frame}{Kết luận}
+\begin{enumerate}\setlength\itemsep{0.45em}
+  \item \textbf{Về giá trị hàm mục tiêu:} code tự viết đạt $F$ \textit{[thấp hơn / ngang]}
+        sklearn ở chữ số thứ \ldots{}, tức phần cài đặt không có sai sót.
+  \item \textbf{Về thời gian:} chậm hơn sklearn \ldots{} lần. sklearn dùng L-BFGS, một phương
+        pháp tựa Newton khai thác thông tin độ cong nên cần rất ít vòng lặp.
+  \item \textbf{Chọn tham số:} bước cố định phải dò tay; backtracking tự tìm bước mà không cần
+        biết $L$, cái giá là vài lần tính $F$ thêm mỗi vòng.
+  \item Số vòng lặp và thời gian là hai chuyện khác nhau. Một cấu hình có thể thắng ở
+        hình này và thua ở hình kia, nên mọi kết luận đều phải đọc trên cả hai.
+  \item \textbf{Điều kiện của bài toán:} với $\lambda=10^{-3}$ thì $L/\mu\approx1500$, nên GD cần
+        $O(10^4)$ vòng để hội tụ chặt. Đây chính là lý do các phương pháp gia tốc
+        ($O(\sqrt{L/\mu})$) và Newton (bậc hai) tồn tại.
+\end{enumerate}
+
+\vfill
+\begin{center}\textcolor{primary}{\textbf{Cảm ơn --- Hỏi \& Đáp}}\end{center}
+\end{frame}
+
+
+
+
+\end{document}
