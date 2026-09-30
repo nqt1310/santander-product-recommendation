@@ -5,7 +5,7 @@
 %
 %  Cau truc thu muc:
 %      bao_cao.tex
-%      hinh/*.pdf        <- 14 file do notebook tu sinh
+%      hinh/*.pdf        <- 23 file do bai_lam.ipynb tu sinh
 %
 %  Hinh nao chua co thi macro \hinh se ve mot o trong thay cho no,
 %  file van bien dich duoc -> khong bi ket khi thieu hinh.
@@ -61,28 +61,50 @@
     \item Nhãn: $y_i=\mathbb{1}[\text{có ở tháng }t]\cdot\mathbb{1}[\text{chưa có ở tháng }t-1]$
     \item Gradient phần trơn: $\nabla\ell(w)=\frac1nX^\top\big(\sigma(Xw)-y\big)$
     \item Hằng số Lipschitz: $L=\dfrac{\sigma_{\max}(X)^2}{4n}+\lambda$ \quad(vì $\sigma'(z)\le\frac14$)
+          $\;\Rightarrow\; L=6.25$, bước an toàn $1/L=0.160$
   \end{itemize}
   \vfill
-  {\footnotesize Quy mô: $n=\ldots$ dòng, $d=38$ cột. \textit{[điền số thật từ output ô 3]}}
+  {\footnotesize Quy mô: train $n=466\,243$ dòng, validation $75\,839$ dòng, $d=161$ cột
+  (160 đặc trưng + chặn). Tỉ lệ dương (sản phẩm \texttt{ind\_recibo\_ult1}): 1,22\% train,
+  1,07\% validation. $\lambda=\lambda_1=10^{-3}$.}
 \end{frame}
 
-\begin{frame}{38 đặc trưng}
+\begin{frame}{Dữ liệu và cỡ mẫu}
+  \begin{itemize}
+    \item \textbf{Đã giảm cỡ mẫu để huấn luyện các thuật toán dễ dàng hơn}: chỉ giữ
+          \textbf{1/12 số khách hàng} (lọc theo mã khách, \emph{cùng một} tập khách xuyên suốt
+          mọi tháng để ghép lịch sử vẫn khớp), thay vì toàn bộ $\sim$13,6 triệu dòng.
+          Nhờ vậy ma trận thiết kế vừa RAM và mỗi thuật toán chạy trong vài giây đến vài chục giây.
+    \item Cửa sổ thời gian: 13 tháng, 2015-01 $\to$ 2016-01. Validation là tháng \textbf{2016-01}.
+    \item Mỗi mẫu cần đủ \textbf{5 tháng lịch sử}, nên tháng mục tiêu của tập train chỉ từ
+          2015-06 đến 2015-12.
+    \item \textbf{Cùng một mẫu và cùng bộ đặc trưng} cho mọi mô hình (các thuật toán tự viết,
+          sklearn, LightGBM) $\Rightarrow$ so sánh công bằng giữa các mô hình; nhưng
+          \emph{không} so trực tiếp được với điểm Kaggle (chấm trên toàn bộ khách, tháng 2016-06).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{160 đặc trưng --- theo hướng các lời giải top Kaggle}
   \begin{center}
-  \begin{tabular}{llp{6.4cm}}
+  \footnotesize
+  \begin{tabular}{llp{7.6cm}}
     \toprule
     \textbf{Nhóm} & \textbf{Số cột} & \textbf{Cách tính} \\
     \midrule
-    Chặn      & 1  & cột toàn số 1, \textbf{không bị phạt} \\
-    Số        & 6  & \texttt{age}, \texttt{antiguedad}, \texttt{renta} ($\log(1{+}x)$),
-                     \texttt{ind\_nuevo}, \texttt{ind\_actividad\_cliente}, \texttt{alta\_year} \\
-    Nhị phân  & 7  & one-hot bỏ mức tham chiếu (giới tính, phân khúc, quan hệ, 3 kênh phổ biến nhất) \\
-    Lịch sử   & 24 & \texttt{ind\_*\_ult1\_lag}: đã có sản phẩm đó ở tháng $t-1$ hay chưa \\
+    Chặn            & 1  & cột toàn số 1, \textbf{không bị phạt} \\
+    Số              & 6  & \texttt{age}, \texttt{antiguedad}, \texttt{renta} ($\log(1{+}x)$),
+                           \texttt{ind\_nuevo}, \texttt{ind\_actividad\_cliente}, \texttt{alta\_year} \\
+    Nhị phân        & 7  & one-hot bỏ mức tham chiếu (giới tính, phân khúc, quan hệ, 3 kênh phổ biến nhất) \\
+    Sở hữu $t-1$    & 24 & đã có sản phẩm đó ở tháng $t-1$ hay chưa \\
+    Sở hữu $t-2..t-5$ & 96 & như trên, lùi 2--5 tháng (chưa mở tài khoản $=$ chưa có) \\
+    Thời gian       & 24 & số tháng kể từ lần gần nhất có sản phẩm (1--5; 6 $=$ không có trong 5 tháng) \\
+    Tổng hợp        & 3  & số sản phẩm đang có; phân khúc / trạng thái hoạt động có đổi so với $t-1$ \\
     \bottomrule
   \end{tabular}
   \end{center}
   \vfill
-  Sáu cột số chuẩn hoá $(x-\mu)/\sigma$ theo $\mu,\sigma$ \textbf{của tập train} --- nếu không,
-  \texttt{renta} cỡ vạn còn \texttt{ind\_nuevo} cỡ 1, gradient descent sẽ zig-zag rất lâu.
+  Mọi cột chuẩn hoá $(x-\mu)/\sigma$ theo $\mu,\sigma$ \textbf{của tập train} --- nếu không,
+  \texttt{renta} cỡ vạn còn cờ 0/1 cỡ 1, gradient descent sẽ zig-zag rất lâu.
 \end{frame}
 
 % =====================================================================
@@ -90,7 +112,7 @@
 
 \begin{frame}{GD: chọn độ dài bước thế nào?}
   \[ w_{k+1}=w_k-t\,\nabla F(w_k) \]
-  Thử $t \in \{0.1,\,0.5,\,1,\,1.5,\,2\}\times \tfrac1L$.
+  Thử $t \in \{0.1,\,0.5,\,1,\,1.5,\,2,\,4\}\times \tfrac1L$ ($4/L$ vượt ngưỡng $2/L$ của lý thuyết).
   \begin{columns}[T]
     \column{0.5\textwidth}\hinh{gd_codinh_vonglap.pdf}
     \column{0.5\textwidth}\hinh{gd_codinh_thoigian.pdf}
@@ -99,10 +121,19 @@
 
 \begin{frame}{Kinh nghiệm rút ra --- bước cố định}
   \begin{itemize}
-    \item $t=1/L$ \textbf{luôn hội tụ} nhưng quá bi quan: $L$ suy từ chặn $\sigma'(z)\le\frac14$
-          cho \emph{mọi} điểm, trong khi tỉ lệ dương chỉ $\sim$1\% nên độ cong thật nhỏ hơn nhiều.
-    \item Bước lớn dần thì tốt dần \textbf{cho tới ngưỡng $2/L$}; vượt qua là $F$ dao động rồi phân kỳ.
-    \item \textit{[điền: bước nào tốt nhất, bước nào bắt đầu dao động]}
+    \item $t=1/L$ \textbf{luôn hội tụ} nhưng quá bi quan: sau 250 vòng $F=0.0671$, còn xa
+          sklearn ($0.0436$).
+    \item Bước càng lớn càng tốt: $2/L\to0.0552$, $4/L\to\mathbf{0.0482}$ (tốt nhất).
+    \item \textbf{$4/L$ vượt ngưỡng $2/L$ mà vẫn hội tụ}, nhưng \emph{dao động} ở $\sim$10 vòng đầu
+          ($F$ tăng lại vài lần) rồi mới đi xuống đều:
+      \begin{itemize}
+        \item tại $w_0=0$ mọi $\sigma(z_i)=\frac12$ nên $\sigma'=\frac14$ --- chặn $L$ \emph{đúng}
+              ở đây, bước $4/L$ vọt lố theo hướng cong nhất;
+        \item càng về gần nghiệm, xác suất dự đoán $\approx1\%$, $\sigma'\approx0.01\ll\frac14$:
+              độ cong thật nhỏ hơn $L$ nhiều lần, bước $4/L$ lại trở thành an toàn.
+      \end{itemize}
+    \item[$\Rightarrow$] $2/L$ là ngưỡng cho \emph{trường hợp xấu nhất}; ngưỡng thật phụ thuộc
+          vùng mà thuật toán đang đi qua --- lý do backtracking đáng giá.
   \end{itemize}
 \end{frame}
 
@@ -122,11 +153,61 @@
 
 \begin{frame}{Kinh nghiệm rút ra --- backtracking}
   \begin{itemize}
-    \item Theo \textbf{số vòng lặp}: mọi $\beta$ gần như trùng nhau --- $\beta$ không đổi hướng đi.
-    \item Theo \textbf{thời gian}: tách hẳn ra. $\beta$ lớn dò kỹ hơn nhưng mỗi vòng phải tính $F$
-          nhiều lần \textit{[điền: $\beta=0.9$ chậm gấp mấy lần $\beta=0.1$]}.
+    \item Theo \textbf{số vòng lặp}: mọi $\beta$ gần như trùng nhau, $F\in[0.04363,\,0.04369]$
+          --- $\beta$ không đổi hướng đi.
+    \item Theo \textbf{thời gian}: tách hẳn ra. $\beta=0.1$ mất 36 giây, $\beta=0.9$ mất
+          140 giây ($\approx3{,}9$ lần) vì mỗi vòng phải tính $F$ nhiều lần mới co đủ.
+    \item So với bước cố định tốt nhất ($4/L$, $F=0.0482$): backtracking xuống tới $0.04363$,
+          \emph{thấp hơn cả sklearn}, không cần biết $L$.
     \item[$\Rightarrow$] Đây chính là lý do đề bài bắt vẽ \textbf{hai hình riêng}: một cấu hình có
           thể thắng ở hình này và thua ở hình kia.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+\section{GD tăng tốc (Nesterov)}
+
+\begin{frame}{Nesterov}
+  \[
+    w_{k+1}=v_k-t\nabla F(v_k),\qquad
+    v_{k+1}=w_{k+1}+\tfrac{\theta_k-1}{\theta_{k+1}}(w_{k+1}-w_k)
+  \]
+  Cùng thông tin với GD (chỉ cần $L$), tốc độ $O(1/k^2)$ thay vì $O(1/k)$.
+  \begin{columns}[T]
+    \column{0.5\textwidth}\hinh{nesterov_vonglap.pdf}
+    \column{0.5\textwidth}\hinh{nesterov_thoigian.pdf}
+  \end{columns}
+  \vfill
+  {\footnotesize Cùng bước $1/L$, cùng 250 vòng: GD $F=0.0671$, Nesterov $F=0.04368$.
+  Tốt nhất ở $t=2/L$: $F=0.04364$ (33 giây).}
+\end{frame}
+
+% =====================================================================
+\section{Newton}
+
+\begin{frame}{Newton}
+  \[
+    \nabla^2F(w_k)\,d_k=\nabla F(w_k),\qquad w_{k+1}=w_k-t_k\,d_k,\qquad
+    \nabla^2F=\tfrac1nX^\top\mathrm{diag}\big(\sigma_i(1-\sigma_i)\big)X+\lambda I'
+  \]
+  \begin{columns}[T]
+    \column{0.5\textwidth}\hinh{newton_codinh_vonglap.pdf}
+    \column{0.5\textwidth}\hinh{newton_bt_vonglap.pdf}
+  \end{columns}
+  \vfill
+  {\footnotesize Trái: bước cố định $t\in\{0.1,0.25,0.5,1\}$. Phải: backtracking (thử $t=1$
+  trước), $\beta\in\{0.1,0.5,0.9\}$. 30 vòng mỗi cấu hình.}
+\end{frame}
+
+\begin{frame}{Kinh nghiệm rút ra --- Newton}
+  \begin{itemize}
+    \item $t=0.5$ và $t=1$ đều tới $F=\mathbf{0.043630}$ --- giá trị \textbf{thấp nhất} trong mọi
+          thuật toán, trong $\sim$10 giây.
+    \item $t=0.1$ (damped quá mạnh) chỉ tới $0.0624$: bỏ mất hội tụ bậc hai.
+    \item Backtracking: cả ba $\beta$ cùng tới $0.043630$ (gần nghiệm $t=1$ luôn được nhận),
+          nhưng $\beta=0.9$ mất 129 giây vì ở các vòng đầu phải co rất nhiều lần.
+    \item Mỗi vòng đắt ($O(nd^2)$ dựng Hessian, $d=161$) nhưng chỉ cần vài vòng
+          $\Rightarrow$ vẫn nhanh nhất theo thời gian trong các thuật toán tự viết.
   \end{itemize}
 \end{frame}
 
@@ -141,8 +222,9 @@
     \column{0.5\textwidth}\hinh{sgd_eta_thoigian.pdf}
   \end{columns}
   \vfill
-  {\footnotesize Trục hoành đếm theo \textbf{epoch} (1 epoch $=$ 1 lượt đọc hết dữ liệu $\approx$
-  chi phí 1 vòng GD). Đếm theo lần cập nhật thì đường GD co lại thành một chấm.}
+  {\footnotesize Trục tung là \textbf{loss trên mini-batch} (20 lần ghi mỗi epoch) nên đường gợn
+  đúng bản chất nhiễu của SGD. Trục hoành đếm theo \textbf{epoch} (1 epoch $=$ 1 lượt đọc hết
+  dữ liệu $\approx$ chi phí 1 vòng GD).}
 \end{frame}
 
 \begin{frame}{SGD --- lịch teo bước}
@@ -154,20 +236,35 @@
   \end{columns}
 \end{frame}
 
+\begin{frame}{Loss mini-batch và $F$ trên toàn bộ dữ liệu}
+  \begin{columns}[T]
+    \column{0.55\textwidth}\hinh{sgd_muot_vs_batch.pdf}
+    \column{0.45\textwidth}
+      \begin{itemize}
+        \item Bước cập nhật luôn nhiễu (mỗi bước chỉ nhìn $B/n\approx1\%$ dữ liệu).
+        \item Nhưng $F$ đo trên \textbf{toàn bộ} tập tại $w_k$ là số \textbf{tất định} ---
+              vẽ nó thì đường SGD mượt như GD.
+        \item Đường gợn hay mượt là do \emph{đại lượng đem vẽ}, không phải do đường đi của $w_k$.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
 \begin{frame}{Kinh nghiệm rút ra --- SGD}
   \begin{itemize}
+    \item Bước cố định, 42 epoch: $\alpha_0=0.2$ tốt nhất (loss epoch cuối $0.04423$);
+          $\alpha_0=0.01$ quá nhỏ ($0.0633$), $\alpha_0=5$ quá nhiễu ($0.0474$).
     \item \textbf{Backtracking không dùng được cho SGD}: điều kiện Armijo cần so $F$ trước/sau,
           mà $F$ trên mini-batch là số nhiễu nên sẽ chấp nhận/từ chối bừa.
-    \item $d=38$ quá nhỏ nên $B=1$ sẽ \emph{chậm hơn} GD theo giây: một bước GD là \textbf{một}
-          lệnh BLAS trên ma trận lớn, còn SGD là hàng nghìn lệnh tí hon.
-          Đo được: 1 epoch tốn gấp $4$--$8$ lần 1 vòng GD $\Rightarrow$ chọn $B=4096$.
-    \item Teo bước \textbf{chỉ đáng khi chạy đủ lâu}. Ở 42 epoch, $\eta_0/k$ teo quá nhanh nên
-          bò không tới đáy --- bước cố định lại thắng. \textit{[điền số]}
+    \item $B=1$ sẽ \emph{chậm hơn} GD theo giây: một bước GD là \textbf{một} lệnh BLAS trên ma
+          trận lớn, còn SGD là hàng trăm lệnh nhỏ. Đo được: 1 epoch ($\approx0{,}96$ s) tốn gấp
+          $\sim$15 lần 1 vòng GD ($\approx0{,}064$ s) dù $B=4096$.
+    \item Teo bước \textbf{chỉ đáng khi chạy đủ lâu}. Ở 42 epoch, $\alpha_0/k$ teo quá nhanh
+          ($0.0527$), $\alpha_0/\sqrt k$ được $0.0459$, còn bước cố định thắng ($0.0442$).
   \end{itemize}
 \end{frame}
 
 % =====================================================================
-\section{Subgradient cho Lasso}
+\section{Subgradient và Proximal cho Lasso}
 
 \begin{frame}{Subgradient}
   $|w_j|$ không khả vi tại 0, thay gradient bằng phần tử \textbf{chuẩn nhỏ nhất} của dưới vi phân:
@@ -183,80 +280,130 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{Kinh nghiệm rút ra --- subgradient}
+\begin{frame}{Proximal gradient (ISTA)}
+  \[
+    w_{k+1}=\operatorname{prox}_{t\lambda_1\|\cdot\|_1}\big(w_k-t\nabla\ell(w_k)\big),\qquad
+    \operatorname{prox}(v)_j=\operatorname{sign}(v_j)\max(|v_j|-t\lambda_1,0)
+  \]
+  Tách phần trơn và phần $L_1$: bước cố định $t\le1/L$ dùng được, soft-threshold đặt \textbf{hẳn}
+  hệ số về 0.
+  \begin{columns}[T]
+    \column{0.5\textwidth}\hinh{proximal_vonglap.pdf}
+    \column{0.5\textwidth}\hinh{proximal_thoigian.pdf}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Kinh nghiệm rút ra --- Lasso}
   \begin{itemize}
-    \item \textbf{Không phải phương pháp giảm}: $F$ có thể tăng ở một số vòng --- đường gợn,
-          khác hẳn GD.
-    \item \textbf{Bước bắt buộc teo dần}; tốc độ chỉ $O(1/\sqrt{k})$, đó là cái giá của việc
-          mất tính khả vi.
-    \item $\lambda_1$ quyết định độ thưa: $10^{-4}\to$ 37/37 hệ số khác 0 (không thưa tí nào),
-          $10^{-3}\to\ldots$, $10^{-2}\to\ldots$ \textit{[điền số thật]}
+    \item \textbf{Subgradient không phải phương pháp giảm}: $F$ vọt lên ở vài vòng đầu rồi mới
+          xuống --- đường gợn, khác hẳn GD. Bước bắt buộc teo dần, tốc độ chỉ $O(1/\sqrt{k})$.
+          Tốt nhất $\alpha_0=8$: $F=0.0517$, 154/160 hệ số khác 0 (gần như không thưa).
+    \item \textbf{Proximal thưa thật sự}: $t=2/L$ cho 30/160 hệ số khác 0.
+          Nhưng với $d=161$ và 250 vòng, ISTA \emph{chưa hội tụ}: $F=0.0583$, còn cao hơn
+          subgradient --- tốc độ $O(1/k)$ với $L=6.25$ là chậm; cần FISTA hoặc thêm vòng.
+    \item sklearn \texttt{liblinear}: $F=0.0467$, 19/160 hệ số khác 0 --- cả hai code tự viết đều
+          chưa tới nghiệm Lasso trong 250 vòng.
   \end{itemize}
 \end{frame}
 
 % =====================================================================
 \section{So sánh và kết luận}
 
-\begin{frame}{Ba thuật toán ở setup tốt nhất, so với sklearn}
+\begin{frame}{Năm thuật toán (Ridge) ở setup tốt nhất, so với sklearn}
   \begin{columns}[T]
     \column{0.5\textwidth}\hinh{tongket_vonglap.pdf}
     \column{0.5\textwidth}\hinh{tongket_thoigian.pdf}
   \end{columns}
   \vfill
-  {\footnotesize Điều kiện để so được: cả ba cùng tối thiểu hoá \emph{một} hàm $F$ (Ridge, cùng
+  {\footnotesize Điều kiện để so được: cùng tối thiểu hoá \emph{một} hàm $F$ (Ridge, cùng
   $\lambda$). Quy đổi cho sklearn: nó dùng $\frac12\|w\|^2+C\sum_i\ell_i$ (tổng), ta dùng trung
-  bình $\Rightarrow C=\dfrac{1}{n\lambda}$.}
+  bình $\Rightarrow C=\dfrac{1}{n\lambda}$. Trục hoành của SGD tính theo epoch.}
 \end{frame}
 
-\begin{frame}{Lasso: subgradient so với thư viện}
+\begin{frame}{Lasso: subgradient và proximal so với thư viện}
   \begin{columns}[T]
     \column{0.5\textwidth}\hinh{lasso_vonglap.pdf}
     \column{0.5\textwidth}\hinh{lasso_thoigian.pdf}
   \end{columns}
   \vfill
-  {\footnotesize Để riêng vì subgradient tối thiểu hoá \emph{hàm khác} ($\lambda_1\|w\|_1$ thay
+  {\footnotesize Để riêng vì Lasso tối thiểu hoá \emph{hàm khác} ($\lambda_1\|w\|_1$ thay
   cho $\frac\lambda2\|w\|_2^2$) --- đặt chung một trục với Ridge là so sai.}
 \end{frame}
 
 \begin{frame}{Bảng kết quả}
   \begin{center}
+  \footnotesize
   \begin{tabular}{lrr}
     \toprule
     \textbf{Setup tốt nhất (Ridge)} & \textbf{$F$ cuối} & \textbf{Thời gian (giây)} \\
     \midrule
-    GD bước cố định $t=\ldots$        & 0.0\ldots & \ldots \\
-    GD backtracking $\beta=\ldots$    & 0.0\ldots & \ldots \\
-    SGD $\eta_0=\ldots$               & 0.0\ldots & \ldots \\
+    GD bước cố định $t=4/L$              & 0.048206 & 15.2 \\
+    GD backtracking $\beta=0.1$          & 0.043634 & 36.0 \\
+    GD Nesterov $t=2/L$                  & 0.043636 & 33.3 \\
+    Newton $t=1$ (30 vòng)               & \textbf{0.043630} & 10.2 \\
+    SGD $\alpha_0=0.2$, bước cố định$^*$ & 0.044234 & 40.4 \\
     \midrule
-    sklearn \texttt{LogisticRegression} (mặc định) & 0.0\ldots & \ldots \\
+    sklearn \texttt{LogisticRegression} (mặc định, lbfgs) & 0.043639 & 2.0 \\
     \bottomrule
   \end{tabular}
-  \end{center}
-  \vspace{0.7em}
-  \begin{center}
+
+  \vspace{0.5em}
   \begin{tabular}{lrrr}
     \toprule
     \textbf{Lasso} & \textbf{$F$ cuối} & \textbf{Giây} & \textbf{Hệ số $\neq 0$} \\
     \midrule
-    Subgradient $\eta_0=\ldots$                        & 0.1\ldots & \ldots & \ldots/37 \\
-    sklearn \texttt{liblinear} (\texttt{penalty='l1'}) & 0.1\ldots & \ldots & \ldots/37 \\
+    Subgradient $\alpha_0=8$                           & 0.051692 & 14.4 & 154/160 \\
+    Proximal (ISTA) $t=2/L$                            & 0.058274 & 14.6 & 30/160 \\
+    sklearn \texttt{liblinear} (\texttt{penalty='l1'}) & 0.046689 & 9.7  & 19/160 \\
     \bottomrule
   \end{tabular}
   \end{center}
+  {\scriptsize $^*$ SGD: trung bình loss mini-batch ở epoch cuối, không phải $F$ trên toàn bộ.}
+\end{frame}
+
+% =====================================================================
+\section{Mở rộng: 24 sản phẩm và so với top Kaggle}
+
+\begin{frame}{MAP@7 --- logistic so với mô hình của các lời giải top Kaggle}
+  24 sản phẩm, cùng mẫu, cùng 160 đặc trưng, validation 2016-01. Chỉ đổi \textbf{mô hình}.
+  \begin{center}
+  \footnotesize
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Mô hình} & \textbf{MAP@7 khách có thêm} & \textbf{MAP@7 toàn bộ} & \textbf{Giây} \\
+    \midrule
+    Phổ biến (mốc sàn)                                        & 0.6264 & 0.01768 & 0 \\
+    Logistic L1 $\times$24 (Proximal, $t=2/L$)                & 0.7733 & 0.02183 & 258 \\
+    LightGBM nhị phân $\times$24 {\scriptsize(hướng hạng 2)}  & 0.8087 & 0.02283 & 44 \\
+    LightGBM softmax {\scriptsize(hướng hạng 1)}              & \textbf{0.8197} & \textbf{0.02314} & 8 \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Đổi sang 160 đặc trưng: logistic tăng từ $0.7467\to0.7733$ (bộ 38 cột cũ).
+    \item Cùng đặc trưng, LightGBM softmax hơn logistic $\sim$4,6 điểm --- nhiều khả năng vì cây
+          bắt được tương tác giữa các đặc trưng (vd.\ "có sản phẩm A tháng trước \emph{và} mới đổi
+          phân khúc") mà mô hình tuyến tính không biểu diễn được.
+    \item Kaggle hạng 1 $\approx0.0314$ (toàn bộ khách, tháng 2016-06, đặc trưng lớn hơn) --- không so
+          trực tiếp được.
+  \end{itemize}
 \end{frame}
 
 \begin{frame}{Kết luận}
   \begin{enumerate}
-    \item \textbf{Về giá trị hàm mục tiêu}: code tự viết đạt $F$ \textit{[thấp hơn / ngang]}
-          sklearn ở chữ số thứ \ldots
-    \item \textbf{Về thời gian}: chậm hơn sklearn \ldots\ lần. sklearn dùng L-BFGS --- phương
-          pháp tựa Newton, dùng thông tin độ cong nên cần rất ít vòng lặp.
-    \item \textbf{Chọn tham số}: bước cố định phải dò tay; backtracking tự tìm bước mà không cần
-          biết $L$, cái giá là vài lần tính $F$ thêm mỗi vòng.
+    \item \textbf{Về giá trị hàm mục tiêu}: Newton ($0.043630$), GD backtracking ($0.043634$) và
+          Nesterov ($0.043636$) đều \textbf{thấp hơn} sklearn lbfgs mặc định ($0.043639$) ---
+          lbfgs dừng sớm khi đạt ngưỡng sai số mặc định (\texttt{tol}$=10^{-4}$).
+    \item \textbf{Về thời gian}: sklearn vẫn nhanh nhất (2 giây); Newton tự viết chậm hơn
+          $\sim$5 lần, GD backtracking $\sim$18 lần.
+    \item \textbf{Chọn tham số}: bước cố định phải dò tay và $2/L$ chỉ là ngưỡng xấu nhất ($4/L$
+          vẫn hội tụ); backtracking tự tìm bước mà không cần biết $L$.
     \item \textbf{Số vòng lặp $\neq$ thời gian}: mọi kết luận đều phải đọc trên cả hai hình.
-    \item \textbf{Điều kiện của bài toán}: với $\lambda=10^{-3}$, tỉ lệ $L/\mu\approx1500$ nên
-          GD cần $O(10^4)$ vòng để hội tụ chặt --- đây là lý do các phương pháp gia tốc
-          ($O(\sqrt{L/\mu})$) và Newton (bậc hai) tồn tại.
+    \item \textbf{Điều kiện của bài toán}: $L=6.25$, $\mu\ge\lambda=10^{-3}$ nên $L/\mu$ có thể tới
+          $\sim$6000 --- GD cần rất nhiều vòng; đó là lý do các phương pháp gia tốc
+          ($O(\sqrt{L/\mu})$) và Newton (bậc hai) thắng rõ.
+    \item \textbf{Về mô hình}: với cùng đặc trưng, gradient boosting vượt logistic trên MAP@7 ---
+          tối ưu tốt hàm log-loss tuyến tính không bù được giới hạn của mô hình tuyến tính.
   \end{enumerate}
 \end{frame}
 
