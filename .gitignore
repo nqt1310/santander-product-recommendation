@@ -1,12 +1,18 @@
-# du lieu Kaggle (tai rieng tu trang cuoc thi, ~2.5GB)
+# du lieu Kaggle (tai rieng tu trang cuoc thi, ~2.5GB) - ke ca ban trong archive/du_lieu_goc
 *.csv
 *.zip
 
-# cache tu sinh khi chay santander_data.py (~1.9GB)
+# cache cua pipeline cu (archive/pipeline_cu/cache, ~4GB)
 cache/
 
-# hinh tu sinh khi chay run_optim.py
-figures/
+# file phu khi bien dich LaTeX
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.synctex.gz
 
 # python
 __pycache__/
