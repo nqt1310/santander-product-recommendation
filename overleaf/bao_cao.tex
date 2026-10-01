@@ -127,7 +127,7 @@
     F\big(w_k-t_k\nabla F\big)\le F(w_k)-c\,t_k\|\nabla F\|^2
   \]
   \haihinh{gd_bt_vonglap.pdf}{gd_bt_thoigian.pdf}
-  \ketqua{Mọi $\beta$ cùng tới $F\approx0.04363$; $\beta=0.1$ nhanh nhất (51 s / 250 vòng), $\beta=0.9$ chậm gấp $\sim$3 lần.}
+  \ketqua{Mọi $\beta$ cùng tới $F\approx0.04363$; $\beta=0.1$ nhanh nhất (46 s / 250 vòng), $\beta=0.9$ chậm gấp $\sim$3 lần.}
 \end{frame}
 
 \begin{frame}{3. GD tăng tốc Nesterov}
@@ -147,7 +147,7 @@
   \vspace{-0.8em}
   \begin{center}\small bước cố định $t_k=t$, hoặc backtracking bắt đầu từ $t=1$\end{center}
   \haihinh{newton_codinh_vonglap.pdf}{newton_bt_vonglap.pdf}
-  \ketqua{Hội tụ bậc hai: $F=0.043630$ --- thấp nhất --- chỉ sau 5 vòng (3,4 s).}
+  \ketqua{Hội tụ bậc hai: $F=0.043630$ --- thấp nhất --- chỉ sau 5 vòng (3,2 s).}
 \end{frame}
 
 \begin{frame}{3. SGD mini-batch}
@@ -169,13 +169,22 @@
   \ketqua{Không đơn điệu, chỉ $O(1/\sqrt k)$. Tốt nhất $\alpha_0=8$: $F=0.05169$, 154/160 hệ số $\ne0$.}
 \end{frame}
 
-\begin{frame}{3. Proximal gradient --- ISTA (Lasso)}
+\begin{frame}{3. Proximal gradient --- ISTA và FISTA (Lasso)}
   \[
-    w_{k+1}=\operatorname{prox}_{t\lambda_1\|\cdot\|_1}\big(w_k-t\nabla\ell(w_k)\big),\qquad
+    \text{ISTA: } w_{k+1}=\operatorname{prox}_{t\lambda_1\|\cdot\|_1}\big(w_k-t\nabla\ell(w_k)\big),\qquad
     \operatorname{prox}(v)_j=\operatorname{sign}(v_j)\max\big(|v_j|-t\lambda_1,0\big)
   \]
-  \haihinh{proximal_vonglap.pdf}{proximal_thoigian.pdf}
-  \ketqua{Thưa thật sự (30/160 hệ số $\ne0$) nhưng chưa hội tụ sau 250 vòng ($F=0.05827$).}
+  \vspace{-0.6em}
+  \[
+    \text{FISTA: } w_{k+1}=\operatorname{prox}\big(v_k-t\nabla\ell(v_k)\big),\qquad
+    v_{k+1}=w_{k+1}+\tfrac{\theta_k-1}{\theta_{k+1}}(w_{k+1}-w_k)
+  \]
+  \begin{columns}[T]
+    \column{0.40\textwidth}\hinh{proximal_vonglap.pdf}
+    \column{0.40\textwidth}\hinh{fista_vonglap.pdf}
+  \end{columns}
+  \ketqua{ISTA ($O(1/k)$) chưa hội tụ sau 250 vòng ($F=0.05827$). FISTA ($O(1/k^2)$), $t=2/L$:
+  $F=0.04655$ --- \textbf{thấp hơn sklearn} ($0.04669$), 24/160 hệ số $\ne0$.}
 \end{frame}
 
 \begin{frame}{3. So sánh best của từng thuật toán}
@@ -185,7 +194,7 @@
   \]
   \vspace{-0.5em}
   \hinh{best_so_sanh.pdf}
-  \ketqua{Newton hội tụ sau 5 vòng (3,4 s), ngang sklearn (27 vòng, 2,7 s). Hai thuật toán Lasso và GD bước cố định chưa hội tụ sau 250 vòng.}
+  \ketqua{Newton hội tụ sau 5 vòng (3,2 s), ngang sklearn (27 vòng, 2,9 s); FISTA hội tụ sau 99 vòng. Chỉ GD bước cố định và Subgradient chưa hội tụ sau 250 vòng.}
 \end{frame}
 
 % =====================================================================
@@ -204,9 +213,9 @@
     \textbf{Mô hình (24 sản phẩm)} & \textbf{khách có thêm} & \textbf{toàn bộ khách} & \textbf{giây} \\
     \midrule
     Phổ biến (mốc sàn)                                & 0.6264 & 0.01768 & 0 \\
-    \textbf{Logistic Ridge, Newton}                    & 0.7966 & 0.02249 & 534 \\
-    LightGBM nhị phân $\times$24                     & 0.8087 & 0.02283 & 100 \\
-    LightGBM softmax                                  & \textbf{0.8197} & \textbf{0.02314} & 36 \\
+    \textbf{Logistic Ridge, Newton}                    & 0.7966 & 0.02249 & 553 \\
+    LightGBM nhị phân $\times$24                     & 0.8087 & 0.02283 & 109 \\
+    LightGBM softmax                                  & \textbf{0.8197} & \textbf{0.02314} & 11 \\
     \bottomrule
   \end{tabular}
   \end{center}
@@ -219,10 +228,10 @@
 
 \begin{frame}{5. Kết luận}
   \begin{enumerate}
-    \item \textbf{Newton} tốt nhất: $F=0.043630$ sau 5 vòng (3,4 s); backtracking và Nesterov cũng hội tụ nhưng cần 80--95 vòng.
+    \item \textbf{Newton} tốt nhất: $F=0.043630$ sau 5 vòng (3,2 s); backtracking và Nesterov cũng hội tụ nhưng cần 80--95 vòng.
     \item \textbf{Ngưỡng $2/L$ chỉ là trường hợp xấu nhất}: $t=4/L$ vẫn hội tụ (sau $\sim$10 vòng dao động).
     \item \textbf{SGD} gợn theo mini-batch; bước cố định $\alpha_0=0.2$ thắng lịch giảm bước trong 42 epoch.
-    \item \textbf{Lasso}: subgradient và ISTA chưa hội tụ sau 250 vòng --- cần FISTA hoặc thêm vòng.
+    \item \textbf{Lasso}: ISTA và subgradient chưa hội tụ sau 250 vòng; thêm gia tốc (FISTA) là hội tụ sau 99 vòng, $F$ thấp hơn sklearn.
     \item \textbf{MAP@7}: logistic (Newton) đạt 0.7966, kém LightGBM softmax 2,3 điểm; Newton đã hội tụ nên khoảng cách nằm ở mô hình tuyến tính, không ở thuật toán tối ưu.
   \end{enumerate}
 \end{frame}
